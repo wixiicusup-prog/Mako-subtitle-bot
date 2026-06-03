@@ -1,106 +1,76 @@
 import os
-import telebot
+import whisper
 import ffmpeg
-from faster_whisper import WhisperModel
-from deep_translator import GoogleTranslator
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from googletrans import Translator
+from dotenv import load_dotenv
 
-# =========================
-# BOT TOKEN
-# =========================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+load_dotenv()
 
-if not BOT_TOKEN:
-    raise Exception("BOT_TOKEN lama helin")
+TOKEN = os.getenv("8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4")
 
-bot = telebot.TeleBot(8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4)
+model = whisper.load_model("base")
+translator = Translator()
 
-# =========================
-# WHISPER MODEL (LIGHT)
-# =========================
-model = WhisperModel("base", device="cpu", compute_type="int8")
 
-# =========================
-# AUDIO EXTRACTION
-# =========================
-def extract_audio(video_file, audio_file):
-    ffmpeg.input(video_file).output(audio_file).run(overwrite_output=True)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Send me a video, I will translate subtitles into Somali!"
+    )
 
-# =========================
-# SPEECH TO TEXT
-# =========================
-def transcribe(audio_file):
-    segments, _ = model.transcribe(audio_file)
 
-    text = ""
-    for s in segments:
-        text += s.text + " "
+def extract_audio(video_path, audio_path):
+    ffmpeg.input(video_path).output(audio_path).run(overwrite_output=True)
 
-    return text.strip()
 
-# =========================
-# TRANSLATION EN → SO
-# =========================
-def translate(text):
-    return GoogleTranslator(source="en", target="so").translate(text)
+def transcribe(audio_path):
+    result = model.transcribe(audio_path)
+    return result["text"]
 
-# =========================
-# CREATE SRT FILE
-# =========================
-def make_srt(text):
-    return f"""1
-00:00:01,000 --> 00:00:10,000
-{text}
-"""
 
-# =========================
-# START COMMAND
-# =========================
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "👋 Soo dir video, subtitle Somali ayaan kuu sameynayaa.")
+def translate_to_somali(text):
+    translated = translator.translate(text, dest="so")
+    return translated.text
 
-# =========================
-# VIDEO HANDLER
-# =========================
-@bot.message_handler(content_types=['video'])
-def handle_video(message):
 
-    bot.reply_to(message, "⏳ Video waa la shaqeynayaa...")
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    video = update.message.video or update.message.document
 
-    # 1. download video
-    file_info = bot.get_file(message.video.file_id)
-    downloaded = bot.download_file(file_info.file_path)
-
+    file = await video.get_file()
     video_path = "video.mp4"
     audio_path = "audio.mp3"
 
-    with open(video_path, "wb") as f:
-        f.write(downloaded)
+    await file.download_to_drive(video_path)
 
-    # 2. extract audio
+    await update.message.reply_text("🎬 Extracting audio...")
+
     extract_audio(video_path, audio_path)
 
-    # 3. speech to text
+    await update.message.reply_text("🧠 Transcribing...")
+
     text = transcribe(audio_path)
 
-    if not text:
-        bot.reply_to(message, "❌ Wax cod ah lama helin")
-        return
+    await update.message.reply_text("🌍 Translating to Somali...")
 
-    # 4. translate
-    somali = translate(text)
+    somali_text = translate_to_somali(text)
 
-    # 5. create subtitle
-    srt = make_srt(somali)
+    subtitle_file = "subtitle.txt"
+    with open(subtitle_file, "w", encoding="utf-8") as f:
+        f.write(somali_text)
 
-    with open("subtitle.srt", "w", encoding="utf-8") as f:
-        f.write(srt)
+    await update.message.reply_document(document=open(subtitle_file, "rb"))
 
-    # 6. send file
-    bot.send_document(message.chat.id, open("subtitle.srt", "rb"))
 
-# =========================
-# RUN BOT
-# =========================
-print("Bot started...")
-bot.infinity_polling(skip_pending=True)
+def main():
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
+
+    print("Bot is running...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
