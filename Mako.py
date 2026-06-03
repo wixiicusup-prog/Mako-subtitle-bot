@@ -1,43 +1,65 @@
 import os
-import whisper
 import ffmpeg
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from googletrans import Translator
+import asyncio
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from openai import OpenAI
 
 load_dotenv()
 
-TOKEN = os.getenv("8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-model = whisper.load_model("base")
-translator = Translator()
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 
+# ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Send me a video, I will translate subtitles into Somali!"
+        "👋 Send me a video, I will generate Somali subtitles for you."
     )
 
 
+# ---------- EXTRACT AUDIO ----------
 def extract_audio(video_path, audio_path):
-    ffmpeg.input(video_path).output(audio_path).run(overwrite_output=True)
+    (
+        ffmpeg
+        .input(video_path)
+        .output(audio_path, format="mp3")
+        .overwrite_output()
+        .run()
+    )
 
 
+# ---------- TRANSCRIBE (OPENAI WHISPER API) ----------
 def transcribe(audio_path):
-    result = model.transcribe(audio_path)
-    return result["text"]
+    with open(audio_path, "rb") as audio_file:
+        result = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
+    return result.text
 
 
+# ---------- TRANSLATE TO SOMALI ----------
 def translate_to_somali(text):
-    translated = translator.translate(text, dest="so")
-    return translated.text
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Translate everything to Somali clearly and naturally."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message.content
 
 
+# ---------- HANDLE VIDEO ----------
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video or update.message.document
 
     file = await video.get_file()
+
     video_path = "video.mp4"
     audio_path = "audio.mp3"
 
@@ -49,21 +71,21 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🧠 Transcribing...")
 
-    text = transcribe(audio_path)
+    text = await asyncio.to_thread(transcribe, audio_path)
 
     await update.message.reply_text("🌍 Translating to Somali...")
 
-    somali_text = translate_to_somali(text)
+    somali_text = await asyncio.to_thread(translate_to_somali, text)
 
-    subtitle_file = "subtitle.txt"
-    with open(subtitle_file, "w", encoding="utf-8") as f:
+    with open("subtitle.txt", "w", encoding="utf-8") as f:
         f.write(somali_text)
 
-    await update.message.reply_document(document=open(subtitle_file, "rb"))
+    await update.message.reply_document(document=open("subtitle.txt", "rb"))
 
 
+# ---------- MAIN ----------
 def main():
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
