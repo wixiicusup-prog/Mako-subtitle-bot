@@ -1,6 +1,15 @@
-python-telegram-bot==21.6
-openai-whisper
-ffmpeg-python
-pydub
-googletrans==4.0.0rc1
-python-dotenv
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# system dependencies (ffmpeg needed for video/audio)
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "Mako.py"]
