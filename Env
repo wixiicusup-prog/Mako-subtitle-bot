@@ -1,7 +1,0 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-BOT_TOKEN = os.getenv("8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4")
-OPENAI_API_KEY = os.getenv("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")
