@@ -1,96 +1,80 @@
 import os
-import ffmpeg
-import asyncio
-from dotenv import load_dotenv
+import uuid
+import subprocess
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from openai import OpenAI
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import speech_recognition as sr
 
-load_dotenv()
+BOT_TOKEN = os.getenv("8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-
-# ---------- START ----------
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Send me a video, I will generate Somali subtitles for you."
+        "👋 Send me a video 🎬\nI will extract audio and generate subtitles."
     )
 
-
-# ---------- EXTRACT AUDIO ----------
-def extract_audio(video_path, audio_path):
-    (
-        ffmpeg
-        .input(video_path)
-        .output(audio_path, format="mp3")
-        .overwrite_output()
-        .run()
-    )
-
-
-# ---------- TRANSCRIBE (OPENAI WHISPER API) ----------
-def transcribe(audio_path):
-    with open(audio_path, "rb") as audio_file:
-        result = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file
-        )
-    return result.text
-
-
-# ---------- TRANSLATE TO SOMALI ----------
-def translate_to_somali(text):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Translate everything to Somali clearly and naturally."},
-            {"role": "user", "content": text}
-        ]
-    )
-    return response.choices[0].message.content
-
-
-# ---------- HANDLE VIDEO ----------
+# Handle video
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video or update.message.document
 
-    file = await video.get_file()
+    if not video:
+        await update.message.reply_text("⚠️ Fadlan video soo dir.")
+        return
 
-    video_path = "video.mp4"
-    audio_path = "audio.mp3"
+    file = await context.bot.get_file(video.file_id)
+
+    video_path = f"{uuid.uuid4()}.mp4"
+    audio_path = f"{uuid.uuid4()}.wav"
 
     await file.download_to_drive(video_path)
 
-    await update.message.reply_text("🎬 Extracting audio...")
+    await update.message.reply_text("⏳ Video la helay... audio ayaan ka saaraya.")
 
-    extract_audio(video_path, audio_path)
+    # 🎬 Convert video → audio (ffmpeg)
+    subprocess.call([
+        "ffmpeg", "-i", video_path,
+        "-ar", "16000", "-ac", "1",
+        audio_path, "-y"
+    ])
 
-    await update.message.reply_text("🧠 Transcribing...")
+    await update.message.reply_text("🎧 Audio extracted... transcribing.")
 
-    text = await asyncio.to_thread(transcribe, audio_path)
+    # 🧠 Speech to text
+    recognizer = sr.Recognizer()
+    audio_file = sr.AudioFile(audio_path)
 
-    await update.message.reply_text("🌍 Translating to Somali...")
+    with audio_file as source:
+        audio_data = recognizer.record(source)
 
-    somali_text = await asyncio.to_thread(translate_to_somali, text)
+    try:
+        text = recognizer.recognize_google(audio_data)
+    except Exception:
+        text = "❌ Could not transcribe audio."
 
-    with open("subtitle.txt", "w", encoding="utf-8") as f:
-        f.write(somali_text)
+    # 📝 Create simple subtitle (SRT)
+    srt_file = f"{uuid.uuid4()}.srt"
+    with open(srt_file, "w", encoding="utf-8") as f:
+        f.write("1\n00:00:01,000 --> 00:00:10,000\n")
+        f.write(text + "\n")
 
-    await update.message.reply_document(document=open("subtitle.txt", "rb"))
+    await update.message.reply_text("✅ Subtitle ready!")
+
+    # send subtitle file
+    await update.message.reply_document(document=open(srt_file, "rb"))
+
+    # cleanup
+    os.remove(video_path)
+    os.remove(audio_path)
+    os.remove(srt_file)
 
 
-# ---------- MAIN ----------
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
 
-    print("Bot is running...")
+    print("Bot running...")
     app.run_polling()
 
 
