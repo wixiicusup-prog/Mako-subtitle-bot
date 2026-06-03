@@ -1,1 +1,6 @@
-pyTelegramBotAPI==4.16.1
+python-telegram-bot==21.6
+openai-whisper
+ffmpeg-python
+pydub
+googletrans==4.0.0rc1
+python-dotenv
