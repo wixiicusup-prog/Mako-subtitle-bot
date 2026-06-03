@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise Exception("BOT_TOKEN lama helin")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(8856982548:AAFxaJbLRd9Dq7JI-a1rorhXwOsj8ULKFmI)
 
 # =========================
 # WHISPER MODEL (LIGHT)
