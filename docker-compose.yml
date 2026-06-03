@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  # ── Main bot ────────────────────────────────────────────────────────────────
+  subtitle-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WHISPER_MODEL_PREBUILD: ${WHISPER_MODEL:-base}
+    image: somali-subtitle-bot:latest
+    container_name: somali_subtitle_bot
+    restart: unless-stopped
+    environment:
+      # ── Required ──────────────────────────────────────────────────────────
+      TELEGRAM_BOT_TOKEN: ${8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4}
+
+      # ── Translation (pick ONE; leave others empty) ─────────────────────
+      GOOGLE_TRANSLATE_API_KEY: ${GOOGLE_TRANSLATE_API_KEY:-}
+      LIBRETRANSLATE_URL: ${LIBRETRANSLATE_URL:-}       # e.g. http://libretranslate:5000
+      LIBRETRANSLATE_KEY: ${LIBRETRANSLATE_KEY:-}
+
+      # ── Optional tuning ───────────────────────────────────────────────
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      MAX_FILE_MB: ${MAX_FILE_MB:-50}
+      TRANSLATION_BATCH_SIZE: ${TRANSLATION_BATCH_SIZE:-20}
+    volumes:
+      - whisper_cache:/home/botuser/.cache/whisper
+    tmpfs:
+      - /tmp/subbot:size=512m,mode=777   # fast in-memory temp storage
+    mem_limit: 3g
+    cpus: "2"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Optional: self-hosted LibreTranslate (free, no API key needed) ──────────
+  # Uncomment to use instead of Google Translate
+  # libretranslate:
+  #   image: libretranslate/libretranslate:latest
+  #   container_name: libretranslate
+  #   restart: unless-stopped
+  #   environment:
+  #     LT_LOAD_ONLY: "en,so"
+  #     LT_DISABLE_WEB_UI: "true"
+  #   ports:
+  #     - "5000:5000"
+
+volumes:
+  whisper_cache:
+    name: somali_bot_whisper_cache
