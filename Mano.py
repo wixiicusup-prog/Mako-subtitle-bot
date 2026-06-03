@@ -30,7 +30,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN: str = os.environ["8932095381:AAFi6voobTAdyv3_JzJKtNZGfjPi9JwhCu4"]
+TELEGRAM_TOKEN: str = os.environ["8932095381:AAFe_0H_JiSDAFsTqoZ23dXKqgbWQ9aPNuk"]
 MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "200"))
 TEMP_DIR: Path = Path(os.getenv("TEMP_DIR", "/tmp/mano"))
 
